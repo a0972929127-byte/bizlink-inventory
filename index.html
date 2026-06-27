@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BizLink 報價中心 物料庫存查詢平台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<!-- SheetJS 用於解析 Excel；若公司網路擋 CDN，CSV 仍可離線使用 -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --dark-blue:#0B1882; --mid-blue:#0041AA; --bizlink-blue:#0077C8; --cyan-blue:#94E3ED;
+    --orange:#F9AB08; --red:#E04040; --green:#57AE5F; --purple:#8E50F3;
+    --ink:#1f2430; --body:#595959; --caption:#B7B7B7; --line:#e6eaf0; --bg:#f4f7fb; --card:#fff;
+    --radius:14px; --shadow:0 1px 2px rgba(11,24,130,.05),0 8px 24px rgba(11,24,130,.06);
+    --font-en:'Roboto'; --font:'Roboto','Noto Sans TC','Microsoft JhengHei','PingFang TC',-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box} html,body{margin:0;padding:0}
+  body{font-family:var(--font);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;line-height:1.5}
+  a{color:var(--bizlink-blue);text-decoration:none}
+
+  .topbar{position:relative;background:linear-gradient(105deg,var(--mid-blue) 0%,var(--bizlink-blue) 70%);color:#fff;overflow:hidden}
+  .topbar-inner{max-width:1180px;margin:0 auto;padding:22px 28px 30px;display:flex;align-items:center;justify-content:space-between;gap:24px;position:relative;z-index:2}
+  .brand{display:flex;align-items:center;gap:16px}
+  .logo{font-family:var(--font-en);font-weight:700;letter-spacing:-.5px;font-size:30px;color:#fff;line-height:1}
+  .logo .accent{color:var(--cyan-blue)}
+  .brand-divider{width:1px;height:32px;background:rgba(255,255,255,.35)}
+  .brand-sub{font-weight:500;font-size:16px;color:rgba(255,255,255,.95)}
+  .brand-sub small{display:block;font-size:11px;color:rgba(255,255,255,.6);letter-spacing:.4px;margin-top:3px;font-weight:400}
+  .wave{position:absolute;right:0;bottom:-2px;width:55%;height:160%;z-index:1;opacity:.9;pointer-events:none}
+  .nav{display:flex;gap:8px;z-index:2}
+  .nav a{color:rgba(255,255,255,.85);font-size:14px;font-weight:500;padding:9px 16px;border-radius:999px;transition:.18s;border:1px solid transparent}
+  .nav a:hover{background:rgba(255,255,255,.12)}
+  .nav a.active{background:#fff;color:var(--mid-blue)}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:28px}
+  .page-title{display:flex;align-items:baseline;gap:14px;margin:0 0 4px}
+  .page-title h1{font-size:24px;font-weight:700;color:var(--bizlink-blue);margin:0}
+  .page-title .eyebrow{font-size:12px;font-weight:700;color:var(--caption);letter-spacing:2px}
+  .page-desc{color:var(--body);font-size:14px;margin:0 0 22px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+
+  .filters{padding:20px;display:grid;grid-template-columns:1fr 220px auto auto;gap:16px;align-items:end}
+  .field label{display:block;font-size:12px;font-weight:500;color:var(--body);margin-bottom:6px}
+  .field .hint{font-weight:400;color:var(--caption)}
+  .input,.select{width:100%;height:44px;border:1px solid var(--line);border-radius:10px;padding:0 14px;font-family:var(--font);font-size:15px;color:var(--ink);background:#fff;transition:.15s}
+  .input:focus,.select:focus{outline:none;border-color:var(--bizlink-blue);box-shadow:0 0 0 3px rgba(0,119,200,.12)}
+  .select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%230077C8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:34px;cursor:pointer}
+
+  .combo{position:relative}
+  .combo-list{position:absolute;z-index:30;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);max-height:300px;overflow:auto;display:none}
+  .combo-list.open{display:block}
+  .combo-item{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #f2f4f8}
+  .combo-item:last-child{border-bottom:none}
+  .combo-item:hover,.combo-item.active{background:#eef6fc}
+  .combo-item .pn{font-weight:600;color:var(--mid-blue);font-family:var(--font-en);white-space:nowrap}
+  .combo-item .ds{color:var(--body);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .combo-empty{padding:14px;color:var(--caption);font-size:14px;text-align:center}
+
+  .btn{height:44px;padding:0 18px;border-radius:10px;border:1px solid transparent;font-family:var(--font);font-size:14px;font-weight:500;cursor:pointer;transition:.15s;white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
+  .btn-primary{background:var(--bizlink-blue);color:#fff}
+  .btn-primary:hover{background:var(--mid-blue)}
+  .btn-ghost{background:#fff;color:var(--body);border-color:var(--line)}
+  .btn-ghost:hover{border-color:var(--bizlink-blue);color:var(--bizlink-blue)}
+  .btn-danger{background:#fff;color:var(--red);border-color:#f3cccc}
+  .btn-danger:hover{background:var(--red);color:#fff}
+
+  .stats{display:flex;gap:14px;margin:18px 0 8px;flex-wrap:wrap}
+  .stat{flex:1;min-width:150px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .stat .k{font-size:12px;color:var(--body);font-weight:500}
+  .stat .v{font-size:22px;font-weight:700;color:var(--mid-blue);font-family:var(--font-en);margin-top:2px}
+
+  .table-wrap{overflow:auto;border-radius:var(--radius)}
+  table{width:100%;border-collapse:collapse;font-size:14px;background:#fff}
+  thead th{background:var(--bizlink-blue);color:#fff;font-weight:500;text-align:left;padding:13px 16px;position:sticky;top:0;white-space:nowrap;font-size:13px;letter-spacing:.3px}
+  thead th.num{text-align:right}
+  tbody td{padding:12px 16px;border-bottom:1px solid var(--line);color:var(--ink)}
+  tbody td.num{text-align:right;font-family:var(--font-en);font-variant-numeric:tabular-nums}
+  tbody tr:hover{background:#f7fbff}
+  .pn-cell{font-family:var(--font-en);font-weight:600;color:var(--mid-blue);white-space:nowrap}
+  .desc-cell{color:var(--body);font-family:var(--font-en);font-size:13px}
+  .plant-tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:500;background:#eef2fb;color:var(--mid-blue);white-space:nowrap}
+  .qty-low{color:var(--red);font-weight:700}
+  .qty-ok{color:var(--green);font-weight:600}
+  .empty-state{padding:60px 20px;text-align:center;color:var(--caption)}
+  .empty-state .big{font-size:46px;margin-bottom:8px;opacity:.5}
+  .empty-state b{color:var(--body);display:block;font-weight:500;margin-bottom:4px}
+
+  .grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:24px}
+  .panel{padding:22px}
+  .panel h2{font-size:16px;font-weight:700;color:var(--ink);margin:0 0 4px}
+  .panel p.sub{font-size:13px;color:var(--body);margin:0 0 16px}
+  .drop{border:2px dashed #c8d6ea;border-radius:14px;padding:34px 20px;text-align:center;background:#fbfdff;cursor:pointer;transition:.18s}
+  .drop:hover,.drop.drag{border-color:var(--bizlink-blue);background:#f0f8ff}
+  .drop .ic{font-size:38px;line-height:1;margin-bottom:10px}
+  .drop b{color:var(--mid-blue)}
+  .drop .types{margin-top:8px;font-size:12px;color:var(--caption)}
+  .filerow{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-top:10px;background:#fff;font-size:13px}
+  .filerow .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;color:#fff}
+  .badge.xlsx{background:var(--green)} .badge.csv{background:var(--bizlink-blue)} .badge.pdf{background:var(--red)}
+  .filerow .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .filerow .meta{color:var(--caption)}
+  .filerow .rm{cursor:pointer;color:var(--caption);font-weight:700;padding:2px 6px}
+  .filerow .rm:hover{color:var(--red)}
+  .map-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;margin-top:6px}
+  .map-grid .field label{font-size:12px}
+  .map-note{font-size:12px;color:var(--orange);background:#fff7e6;border:1px solid #ffe6b3;border-radius:8px;padding:8px 12px;margin:14px 0}
+  .actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+  .radio-row{display:flex;gap:18px;margin:10px 0 4px;font-size:13px;color:var(--body)}
+  .radio-row label{display:flex;align-items:center;gap:6px;cursor:pointer}
+  .mini-table{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:8px}
+  .mini-table table{font-size:12.5px}
+  .mini-table thead th{background:#eef2fb;color:var(--mid-blue);font-size:12px;padding:8px 10px}
+  .mini-table tbody td{padding:7px 10px}
+
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:.25s;z-index:100}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.ok{background:#15803d} .toast.err{background:var(--red)}
+  footer{max-width:1180px;margin:10px auto 40px;padding:0 28px;color:var(--caption);font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  .hidden{display:none!important}
+  @media(max-width:860px){
+    .filters{grid-template-columns:1fr} .grid2{grid-template-columns:1fr} .map-grid{grid-template-columns:1fr}
+    .topbar-inner{flex-direction:column;align-items:flex-start} .wave{width:90%;opacity:.5}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <svg class="wave" viewBox="0 0 600 300" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0,150 C150,80 300,230 450,150 C520,115 560,150 600,140 L600,300 L0,300 Z" fill="rgba(148,227,237,.25)"/>
+    <path d="M0,185 C150,120 320,250 470,175 C540,140 575,175 600,168 L600,300 L0,300 Z" fill="rgba(148,227,237,.35)"/>
+  </svg>
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="logo">Biz<span class="accent">Link</span></div>
+      <div class="brand-divider"></div>
+      <div class="brand-sub">報價中心 · 物料庫存查詢平台
+        <small>QUOTATION CENTER · MATERIAL INVENTORY</small>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="#query" id="nav-query">庫存查詢</a>
+      <a href="#admin" id="nav-admin">資料管理 /admin</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ============ 前台：庫存查詢 ============ -->
+<main id="view-query" class="wrap">
+  <div class="page-title">
+    <span class="eyebrow">報價中心</span>
+    <h1>物料庫存查詢</h1>
+  </div>
+  <p class="page-desc">輸入「料號」或「敘述」關鍵字（可從下方建議挑選），按下「搜尋」即可查出各廠區的存貨數量與單品價格（USD）。</p>
+
+  <div class="card filters">
+    <div class="field combo">
+      <label>料號 / 敘述 <span class="hint">— 打字會即時跳出建議，選定或按「搜尋」查詢</span></label>
+      <input class="input" id="searchInput" type="text" autocomplete="off"
+             placeholder="例如 117G0-174721-R1、CBL ASSY、LED…" />
+      <div class="combo-list" id="comboList"></div>
+    </div>
+    <div class="field">
+      <label>廠區</label>
+      <select class="select" id="plantSelect"><option value="">全部廠區</option></select>
+    </div>
+    <div class="field"><button class="btn btn-primary" id="searchBtn">🔍 搜尋</button></div>
+    <div class="field"><button class="btn btn-ghost" id="resetBtn">清除</button></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">符合品項</div><div class="v" id="stCount">0</div></div>
+    <div class="stat"><div class="k">總存貨數量</div><div class="v" id="stQty">0</div></div>
+    <div class="stat"><div class="k">涵蓋廠區</div><div class="v" id="stPlants">0</div></div>
+  </div>
+
+  <div class="card" style="margin-top:8px">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>料號</th>
+            <th>敘述</th>
+            <th class="num">存貨數量</th>
+            <th class="num">單品價格 (USD)</th>
+            <th>廠區名稱</th>
+          </tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+      </table>
+    </div>
+    <div class="empty-state" id="emptyResult"></div>
+  </div>
+</main>
+
+<!-- ============ 後台：/admin 上傳 ============ -->
+<main id="view-admin" class="wrap hidden">
+  <div class="page-title">
+    <span class="eyebrow">/ADMIN</span>
+    <h1>資料管理與上傳</h1>
+  </div>
+  <p class="page-desc">上傳 Excel / CSV 庫存資料，或 PDF 參考文件。Excel 欄位先以對應方式彈性處理，正式欄位確認後可再固定。</p>
+
+  <div class="grid2">
+    <div class="card panel">
+      <h2>上傳庫存檔</h2>
+      <p class="sub">支援 .xlsx / .xls / .csv（庫存資料）與 .pdf（參考文件）。</p>
+      <div class="drop" id="dropZone">
+        <div class="ic">⬆️</div>
+        <div><b>點擊選擇檔案</b> 或拖曳到此處</div>
+        <div class="types">Excel · CSV · PDF</div>
+        <input type="file" id="fileInput" class="hidden" accept=".xlsx,.xls,.csv,.pdf" multiple />
+      </div>
+      <div id="fileList"></div>
+
+      <div id="mapBox" class="hidden">
+        <div class="map-note">⚠️ Excel 具體欄位待確認 — 請先把你檔案的欄位對應到系統欄位（之後固定欄位即可省略此步）。</div>
+        <h2 style="margin-top:6px">欄位對應</h2>
+        <div class="map-grid">
+          <div class="field"><label>料號 *</label><select class="select map-sel" data-key="partNo"></select></div>
+          <div class="field"><label>敘述 *</label><select class="select map-sel" data-key="description"></select></div>
+          <div class="field"><label>存貨數量 *</label><select class="select map-sel" data-key="qty"></select></div>
+          <div class="field"><label>單品價格 (USD) *</label><select class="select map-sel" data-key="price"></select></div>
+          <div class="field"><label>廠區名稱 *</label><select class="select map-sel" data-key="plant"></select></div>
+        </div>
+        <div class="radio-row">
+          <label><input type="radio" name="importMode" value="append" checked /> 附加到現有資料</label>
+          <label><input type="radio" name="importMode" value="replace" /> 取代全部現有資料</label>
+        </div>
+        <div class="mini-table" id="previewTable"></div>
+        <div class="actions">
+          <button class="btn btn-primary" id="importBtn">匯入庫存資料</button>
+          <button class="btn btn-ghost" id="cancelImportBtn">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card panel">
+      <h2>目前資料集</h2>
+      <p class="sub">前台查詢即時讀取這份資料。</p>
+      <div class="stats" style="margin-top:0">
+        <div class="stat"><div class="k">總品項列數</div><div class="v" id="adRows">0</div></div>
+        <div class="stat"><div class="k">不重複料號</div><div class="v" id="adParts">0</div></div>
+        <div class="stat"><div class="k">廠區數</div><div class="v" id="adPlants">0</div></div>
+      </div>
+      <h2 style="margin-top:20px">PDF 參考文件</h2>
+      <p class="sub">本機暫存（不離開瀏覽器），可於本次操作中開啟檢視。</p>
+      <div id="pdfList"><div class="filerow meta" style="border-style:dashed;justify-content:center">尚未上傳 PDF</div></div>
+      <div class="actions" style="margin-top:22px">
+        <button class="btn btn-ghost" id="exportBtn">匯出目前資料 (CSV)</button>
+        <button class="btn btn-ghost" id="templateBtn">下載範本 CSV</button>
+        <button class="btn btn-danger" id="clearBtn">清空全部資料</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span>© 2025 BizLink Group · Confidential &amp; Privileged</span>
+  <span>報價中心 物料庫存查詢平台 — v0.2</span>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  var STORE_KEY = "bizlink_inventory_v3";
+  var dataset = [];
+  var pdfRefs = [];
+
+  function safeLoad(){ try{ var raw=localStorage.getItem(STORE_KEY); if(raw){ dataset=JSON.parse(raw)||[]; return true; } }catch(e){} return false; }
+  function safeSave(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(dataset)); }catch(e){} }
+
+  // 種子資料：CTBG 報價中心跨廠區庫存（示範資料）。
+  // 敘述沿用 Salesforce「Official Part No.」介面格式，品名＝料號＋(敘述)，
+  // 例：117G0-174721-R1 (CBL ASSY,RC,TRIM LED,DS5A, #150-00969-0,REV 01)。
+  // 廠區沿用集團五大製造據點；單品價格為 USD。
+  var PLANTS = ["深圳翔耀","昆山","廈門","馬來西亞檳城","印尼巴淡"];
+  // [料號, 敘述(SF 格式), 基準單價USD]
+  var CATALOG = [
+    ["117G0-174721-R1","CBL ASSY,RC,TRIM LED,DS5A, #150-00969-0,REV 01",6.85],
+    ["117G0-174930-R1","CBL ASSY,TRIM LED,DS7B, #150-01122-0,REV 01",7.20],
+    ["117G0-174955-R2","CBL ASSY,TRIM LED,DS9C, #150-01340-0,REV 02",7.95],
+    ["117G0-182334-R2","CBL ASSY,PWR,SATA 15P,L=300MM,REV 02",2.10],
+    ["117G0-182560-R1","CBL ASSY,PWR,GPU 12VHPWR,600W,L=600MM,REV 01",5.80],
+    ["117G0-182612-R2","CBL ASSY,FAN,4PIN,PWM,L=200MM,REV 02",0.95],
+    ["117G0-183090-R1","CBL ASSY,PWR,ATX 24P,L=450MM,REV 01",3.70],
+    ["117G0-661245-R1","CBL ASSY,RF,SMA-SMA,L=500MM,REV 01",3.40],
+    ["117G0-661330-R1","CBL ASSY,COAX,U.FL-U.FL,L=150MM,REV 01",0.75],
+    ["117G0-661410-R2","CBL ASSY,RF JUMPER,N-SMA,L=1M,REV 02",6.10],
+    ["215A0-330118-R1","WIRE HARNESS,PCIE,GEN5,8P-8P,REV 01",4.25],
+    ["215A0-330145-R2","CBL ASSY,PCIE GEN5,SLIMLINE,8I,L=750MM,REV 02",8.90],
+    ["215A0-330610-R1","CBL ASSY,MINI SAS HD,SFF-8643,L=1M,REV 01",7.40],
+    ["215A0-330622-R1","CBL ASSY,OCULINK,SFF-8611,4I,L=500MM,REV 01",6.30],
+    ["215A0-331200-R1","CBL ASSY,SLIMSAS,SFF-9402,8I,L=850MM,REV 01",10.40],
+    ["215A0-441710-R1","CBL ASSY,M.2,KEY M,NVME EXT,L=250MM,REV 01",9.10],
+    ["318C0-441002-R3","CBL ASSY,USB TYPE-C,40G,L=1M,REV 03",12.40],
+    ["318C0-441020-R1","CBL ASSY,TYPE-C,USB4,240W EPR,L=1.2M,REV 01",14.90],
+    ["318C0-441088-R1","CBL ASSY,USB 3.2,TYPE-A TO C,10G,L=1M,REV 01",5.60],
+    ["318C0-880456-R1","CBL ASSY,HDMI 2.1,8K,L=1.5M,REV 01",9.80],
+    ["318C0-882010-R1","CBL ASSY,DP 1.4,8K,L=2M,REV 01",11.20],
+    ["318C0-883120-R1","CBL ASSY,HDMI 2.1,FIBER,4K,L=10M,REV 01",29.90],
+    ["402D0-559210-R2","CBL ASSY,DAC,SFP28,25G,L=3M,REV 02",22.30],
+    ["402D0-559871-R1","CBL ASSY,DAC,QSFP28,100G,L=2M,REV 01",38.00],
+    ["402D0-559880-R2","CBL ASSY,DAC,QSFP-DD,400G,L=1.5M,REV 02",56.00],
+    ["402D0-661200-R1","CBL ASSY,AOC,QSFP56,200G,L=5M,REV 01",78.50],
+    ["402D0-662050-R1","CBL ASSY,AOC,SFP-DD,100G,L=7M,REV 01",64.00],
+    ["402D0-771500-R1","CBL ASSY,AOC,OSFP,800G,L=10M,REV 01",168.00],
+    ["520E0-770330-R2","CBL ASSY,FFC,0.5MM,40POS,L=120MM,REV 02",1.15],
+    ["520E0-770412-R1","CBL ASSY,FPC,0.3MM,50POS,L=80MM,REV 01",1.45],
+    ["520E0-770530-R1","CBL ASSY,RIBBON,IDC,2.54MM,20POS,L=300MM,REV 01",1.05],
+    ["520E0-771140-R1","CBL ASSY,LVDS,30POS,1CH,8BIT,L=250MM,REV 01",3.25],
+    ["520E0-772260-R1","CBL ASSY,FFC,1.0MM,30POS,L=200MM,REV 01",1.30],
+    ["631H0-220115-R1","CBL ASSY,ETH,CAT6A,RJ45,L=3M,REV 01",4.80],
+    ["631H0-220330-R1","WIRE HARNESS,SIGNAL,28AWG,12P,L=350MM,REV 01",2.95],
+    ["631H0-221050-R1","CBL ASSY,ETH,CAT6,SHIELDED,L=2M,REV 01",3.60],
+    ["733B0-510210-R1","WIRE HARNESS,EV,HV ORANGE,2AWG,L=800MM,REV 01",18.70],
+    ["733B0-510440-R2","WIRE HARNESS,BMS,16S,L=400MM,REV 02",9.40],
+    ["733B0-510620-R1","WIRE HARNESS,SENSOR,ADAS,L=600MM,REV 01",7.85],
+    ["733B0-511015-R1","WIRE HARNESS,EV,DC FAST CHG,L=1.2M,REV 01",24.50]
+  ];
+  // 以「料號index × 廠區index」為輸入的固定亂數，確保每次載入的種子一致
+  function srnd(a,b){ var x=Math.sin((a+1)*73.13+(b+1)*19.71)*10000; return x-Math.floor(x); }
+  var SEED=[];
+  CATALOG.forEach(function(c,i){
+    var placed=false;
+    PLANTS.forEach(function(plant,j){
+      if(srnd(i,j)<0.42) return;                 // 非每個廠區都生產該料號
+      placed=true;
+      var price=Math.round(c[2]*(0.94+srnd(i+7,j)*0.12)*100)/100;   // 廠區間 ±約6%
+      var t=srnd(i+13,j+3);
+      var qty=t<0.18 ? Math.floor(8+t*480)                          // 約18% 低庫存(<100→紅字)
+                     : Math.floor(120+srnd(i+3,j+9)*9200);
+      SEED.push({plant:plant,partNo:c[0],description:c[1],qty:qty,price:price});
+    });
+    if(!placed){                                  // 保底：每個料號至少出現在一個廠區
+      var jj=Math.floor(srnd(i,99)*PLANTS.length);
+      SEED.push({plant:PLANTS[jj],partNo:c[0],description:c[1],qty:Math.floor(150+srnd(i,7)*4000),price:c[2]});
+    }
+  });
+
+  if(!safeLoad() || dataset.length===0){ dataset = SEED.slice(); safeSave(); }
+
+  var $=function(s,el){return (el||document).querySelector(s);};
+  var $$=function(s,el){return Array.prototype.slice.call((el||document).querySelectorAll(s));};
+  function usd(n){ return "US$" + Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function numfmt(n){ return Number(n||0).toLocaleString("en-US"); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+  var toastEl=$("#toast"), toastTimer;
+  function toast(msg,type){ toastEl.textContent=msg; toastEl.className="toast show "+(type||""); clearTimeout(toastTimer); toastTimer=setTimeout(function(){toastEl.className="toast";},2600); }
+
+  function route(){
+    var h=(location.hash||"#query").replace("#","");
+    var admin=h==="admin";
+    $("#view-query").classList.toggle("hidden",admin);
+    $("#view-admin").classList.toggle("hidden",!admin);
+    $("#nav-query").classList.toggle("active",!admin);
+    $("#nav-admin").classList.toggle("active",admin);
+    if(admin) refreshAdmin();
+    window.scrollTo(0,0);
+  }
+  window.addEventListener("hashchange",route);
+
+  /* ===== 前台查詢 ===== */
+  var searchInput=$("#searchInput"), plantSelect=$("#plantSelect"), comboList=$("#comboList"), emptyEl=$("#emptyResult");
+  var comboActive=-1;
+
+  function plants(){ var s={}; dataset.forEach(function(d){if(d.plant)s[d.plant]=1;}); return Object.keys(s); }
+  function fillPlantSelect(){
+    var cur=plantSelect.value;
+    plantSelect.innerHTML='<option value="">全部廠區</option>'+plants().map(function(p){return '<option value="'+esc(p)+'">'+esc(p)+'</option>';}).join("");
+    plantSelect.value=cur;
+  }
+
+  function matchRows(){
+    var q=searchInput.value.trim().toLowerCase(), p=plantSelect.value;
+    return dataset.filter(function(d){
+      if(p && d.plant!==p) return false;
+      if(!q) return true;
+      return (d.partNo||"").toLowerCase().indexOf(q)>=0 || (d.description||"").toLowerCase().indexOf(q)>=0;
+    });
+  }
+
+  function setStats(c,q,pl){ $("#stCount").textContent=numfmt(c); $("#stQty").textContent=numfmt(q); $("#stPlants").textContent=pl; }
+  function setEmpty(kind){
+    if(kind==="prompt"){
+      emptyEl.innerHTML='<div class="big">🔍</div><b>輸入料號或敘述後，按下「搜尋」查詢</b><span>可搭配廠區篩選，留空直接搜尋則列出全部。</span>';
+    }else{
+      emptyEl.innerHTML='<div class="big">📦</div><b>查無符合的品項</b><span>試著調整關鍵字或廠區，或到「資料管理 /admin」上傳最新庫存。</span>';
+    }
+    emptyEl.classList.remove("hidden");
+  }
+
+  function renderTable(){
+    var rows=matchRows(), body=$("#resultBody");
+    if(rows.length===0){ body.innerHTML=""; setEmpty("none"); setStats(0,0,0); return; }
+    emptyEl.classList.add("hidden");
+    body.innerHTML=rows.map(function(d){
+      var low=(d.qty||0)<100;
+      return "<tr>"+
+        '<td class="pn-cell">'+esc(d.partNo)+'</td>'+
+        '<td class="desc-cell">'+esc(d.description||"—")+'</td>'+
+        '<td class="num '+(low?"qty-low":"qty-ok")+'">'+numfmt(d.qty)+'</td>'+
+        '<td class="num">'+usd(d.price)+'</td>'+
+        '<td><span class="plant-tag">'+esc(d.plant)+'</span></td>'+
+      "</tr>";
+    }).join("");
+    var qty=0,ps={}; rows.forEach(function(d){ qty+=(+d.qty||0); if(d.plant)ps[d.plant]=1; });
+    setStats(rows.length,qty,Object.keys(ps).length);
+  }
+
+  function buildSuggestions(){
+    var q=searchInput.value.trim().toLowerCase(), seen={}, out=[];
+    dataset.forEach(function(d){
+      var key=d.partNo+"|"+d.description;
+      if(seen[key]) return;
+      var hay=(d.partNo+" "+d.description).toLowerCase();
+      if(q && hay.indexOf(q)<0) return;
+      seen[key]=1; out.push(d);
+    });
+    return out.slice(0,40);
+  }
+  function openCombo(){
+    var items=buildSuggestions(); comboActive=-1;
+    comboList.innerHTML = items.length===0
+      ? '<div class="combo-empty">無相符建議</div>'
+      : items.map(function(d){ return '<div class="combo-item" data-pn="'+esc(d.partNo)+'"><span class="pn">'+esc(d.partNo)+'</span><span class="ds">'+esc(d.description)+'</span></div>'; }).join("");
+    comboList.classList.add("open");
+  }
+  function closeCombo(){ comboList.classList.remove("open"); }
+  function doSearch(){ closeCombo(); renderTable(); }
+
+  searchInput.addEventListener("input", openCombo);           // 打字只更新建議，不跑表格
+  searchInput.addEventListener("focus", openCombo);
+  searchInput.addEventListener("keydown", function(e){
+    var items=$$(".combo-item",comboList);
+    if(e.key==="ArrowDown"){ e.preventDefault(); comboActive=Math.min(comboActive+1,items.length-1); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); comboActive=Math.max(comboActive-1,0); }
+    else if(e.key==="Enter"){
+      e.preventDefault();
+      if(comboActive>=0 && items[comboActive]){ searchInput.value=items[comboActive].getAttribute("data-pn"); }
+      doSearch(); return;
+    }
+    else if(e.key==="Escape"){ closeCombo(); return; }
+    else return;
+    items.forEach(function(it,i){ it.classList.toggle("active",i===comboActive); });
+    if(items[comboActive]) items[comboActive].scrollIntoView({block:"nearest"});
+  });
+  comboList.addEventListener("mousedown", function(e){
+    var it=e.target.closest(".combo-item"); if(!it) return;
+    searchInput.value=it.getAttribute("data-pn"); doSearch();
+  });
+  document.addEventListener("click", function(e){ if(!e.target.closest(".combo")) closeCombo(); });
+
+  $("#searchBtn").addEventListener("click", doSearch);
+  $("#resetBtn").addEventListener("click", function(){
+    searchInput.value=""; plantSelect.value=""; closeCombo();
+    $("#resultBody").innerHTML=""; setStats(0,0,0); setEmpty("prompt");
+  });
+
+  /* ===== 後台 /admin ===== */
+  var pending=null;
+  var dropZone=$("#dropZone"), fileInput=$("#fileInput");
+  dropZone.addEventListener("click", function(){ fileInput.click(); });
+  dropZone.addEventListener("dragover", function(e){ e.preventDefault(); dropZone.classList.add("drag"); });
+  dropZone.addEventListener("dragleave", function(){ dropZone.classList.remove("drag"); });
+  dropZone.addEventListener("drop", function(e){ e.preventDefault(); dropZone.classList.remove("drag"); handleFiles(e.dataTransfer.files); });
+  fileInput.addEventListener("change", function(){ handleFiles(fileInput.files); fileInput.value=""; });
+
+  function handleFiles(files){
+    Array.prototype.forEach.call(files,function(f){
+      var ext=(f.name.split(".").pop()||"").toLowerCase();
+      if(ext==="pdf") addPdf(f);
+      else if(ext==="csv") readCsv(f);
+      else if(ext==="xlsx"||ext==="xls") readExcel(f);
+      else toast("不支援的檔案類型："+f.name,"err");
+    });
+  }
+  function addFileRow(f,badgeClass){
+    var ext=(f.name.split(".").pop()||"").toLowerCase();
+    var row=document.createElement("div"); row.className="filerow";
+    row.innerHTML='<span class="badge '+badgeClass+'">'+ext.toUpperCase()+'</span><span class="name">'+esc(f.name)+'</span><span class="meta">'+(f.size/1024).toFixed(0)+' KB</span>';
+    $("#fileList").appendChild(row);
+  }
+  function readCsv(f){
+    addFileRow(f,"csv");
+    var rd=new FileReader();
+    rd.onload=function(){ var p=parseCSV(rd.result); if(p.length<2){ toast("CSV 內容不足","err"); return; } pending={headers:p[0],rows:p.slice(1),fileName:f.name}; setupMapping(); };
+    rd.readAsText(f,"utf-8");
+  }
+  function parseCSV(text){
+    text=text.replace(/^\uFEFF/,""); var rows=[],row=[],cur="",q=false;
+    for(var i=0;i<text.length;i++){ var c=text[i];
+      if(q){ if(c==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+      else{ if(c==='"') q=true; else if(c===","){row.push(cur);cur="";} else if(c==="\n"){row.push(cur);rows.push(row);row=[];cur="";} else if(c==="\r"){} else cur+=c; }
+    }
+    if(cur!==""||row.length){ row.push(cur); rows.push(row); }
+    return rows.filter(function(r){return r.some(function(x){return String(x).trim()!=="";});});
+  }
+  function readExcel(f){
+    addFileRow(f,"xlsx");
+    if(typeof XLSX==="undefined"){ toast("Excel 解析模組未載入（網路受限），請改用 CSV","err"); return; }
+    var rd=new FileReader();
+    rd.onload=function(){
+      try{
+        var wb=XLSX.read(new Uint8Array(rd.result),{type:"array"});
+        var arr=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
+        arr=arr.filter(function(r){return r.some(function(x){return String(x).trim()!=="";});});
+        if(arr.length<2){ toast("工作表內容不足","err"); return; }
+        pending={headers:arr[0].map(String),rows:arr.slice(1),fileName:f.name}; setupMapping();
+      }catch(err){ toast("Excel 解析失敗："+err.message,"err"); }
+    };
+    rd.readAsArrayBuffer(f);
+  }
+  var GUESS={
+    plant:["廠區","廠別","工廠","plant","site","location","廠"],
+    partNo:["料號","品號","part","pn","material","item no","編號"],
+    description:["敘述","描述","規格","品名","名稱","spec","description","desc","說明"],
+    qty:["數量","存貨","庫存","qty","quantity","stock","在庫"],
+    price:["單價","價格","單品價格","price","unit price","cost","usd"]
+  };
+  function guessCol(headers,key){
+    var lower=headers.map(function(h){return String(h).toLowerCase().trim();}), kws=GUESS[key];
+    for(var k=0;k<kws.length;k++) for(var i=0;i<lower.length;i++) if(lower[i].indexOf(kws[k].toLowerCase())>=0) return i;
+    return -1;
+  }
+  function setupMapping(){
+    var headers=pending.headers;
+    var optHtml='<option value="-1">— 不對應 —</option>'+headers.map(function(h,i){return '<option value="'+i+'">'+esc(h||("欄"+(i+1)))+'</option>';}).join("");
+    $$(".map-sel").forEach(function(sel){ var key=sel.getAttribute("data-key"); sel.innerHTML=optHtml; sel.value=String(guessCol(headers,key)); sel.onchange=renderPreview; });
+    $("#mapBox").classList.remove("hidden"); renderPreview(); $("#mapBox").scrollIntoView({behavior:"smooth",block:"nearest"});
+  }
+  function currentMap(){ var m={}; $$(".map-sel").forEach(function(sel){ m[sel.getAttribute("data-key")]=parseInt(sel.value,10); }); return m; }
+  function rowToObj(r,m){
+    function g(k){ var i=m[k]; return i>=0? r[i] : ""; }
+    return {
+      plant:String(g("plant")).trim(), partNo:String(g("partNo")).trim(), description:String(g("description")).trim(),
+      qty:parseFloat(String(g("qty")).replace(/[, ]/g,""))||0, price:parseFloat(String(g("price")).replace(/[,$ ]/g,""))||0
+    };
+  }
+  function renderPreview(){
+    var m=currentMap(), sample=pending.rows.slice(0,8).map(function(r){return rowToObj(r,m);});
+    $("#previewTable").innerHTML='<table><thead><tr><th>料號</th><th>敘述</th><th>數量</th><th>單價(USD)</th><th>廠區</th></tr></thead><tbody>'+
+      sample.map(function(o){return "<tr><td>"+esc(o.partNo)+"</td><td>"+esc(o.description)+"</td><td>"+numfmt(o.qty)+"</td><td>"+usd(o.price)+"</td><td>"+esc(o.plant)+"</td></tr>";}).join("")+"</tbody></table>";
+  }
+  $("#importBtn").addEventListener("click", function(){
+    if(!pending) return;
+    var m=currentMap();
+    if(m.partNo<0||m.plant<0||m.qty<0||m.price<0){ toast("請至少對應：料號、廠區、數量、單價","err"); return; }
+    var objs=pending.rows.map(function(r){return rowToObj(r,m);}).filter(function(o){return o.partNo||o.plant;});
+    var mode=($$('input[name="importMode"]').filter(function(x){return x.checked;})[0]||{}).value;
+    if(mode==="replace") dataset=[];
+    dataset=dataset.concat(objs); safeSave();
+    toast("已匯入 "+objs.length+" 列資料","ok");
+    resetImport(); fillPlantSelect(); refreshAdmin();
+  });
+  $("#cancelImportBtn").addEventListener("click", resetImport);
+  function resetImport(){ pending=null; $("#mapBox").classList.add("hidden"); $("#fileList").innerHTML=""; }
+
+  function addPdf(f){ var url=URL.createObjectURL(f); pdfRefs.push({name:f.name,url:url}); renderPdfList(); toast("已加入 PDF 參考文件","ok"); }
+  function renderPdfList(){
+    var box=$("#pdfList");
+    if(pdfRefs.length===0){ box.innerHTML='<div class="filerow meta" style="border-style:dashed;justify-content:center">尚未上傳 PDF</div>'; return; }
+    box.innerHTML=pdfRefs.map(function(p,i){ return '<div class="filerow"><span class="badge pdf">PDF</span><span class="name">'+esc(p.name)+'</span><a class="meta" href="'+p.url+'" target="_blank">開啟</a><span class="rm" data-i="'+i+'">✕</span></div>'; }).join("");
+    $$("#pdfList .rm").forEach(function(el){ el.onclick=function(){ var i=+el.getAttribute("data-i"); URL.revokeObjectURL(pdfRefs[i].url); pdfRefs.splice(i,1); renderPdfList(); }; });
+  }
+  function toCsv(rows){
+    var head=["料號","敘述","存貨數量","單品價格USD","廠區名稱"], lines=[head.join(",")];
+    rows.forEach(function(d){ lines.push([d.partNo,d.description,d.qty,d.price,d.plant].map(function(v){ v=String(v==null?"":v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(",")); });
+    return "\uFEFF"+lines.join("\n");
+  }
+  function download(name,content,type){ var blob=new Blob([content],{type:type||"text/csv;charset=utf-8"}); var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(function(){URL.revokeObjectURL(a.href);},500); }
+  $("#exportBtn").addEventListener("click", function(){ if(dataset.length===0){ toast("目前沒有資料","err"); return; } download("bizlink_inventory.csv",toCsv(dataset)); });
+  $("#templateBtn").addEventListener("click", function(){ download("bizlink_inventory_template.csv",toCsv(SEED.slice(0,2))); toast("已下載範本 CSV","ok"); });
+  $("#clearBtn").addEventListener("click", function(){ if(!confirm("確定要清空全部庫存資料？此動作無法復原。")) return; dataset=[]; safeSave(); fillPlantSelect(); refreshAdmin(); toast("已清空全部資料","ok"); });
+
+  function refreshAdmin(){
+    var parts={},ps={}; dataset.forEach(function(d){ if(d.partNo)parts[d.partNo]=1; if(d.plant)ps[d.plant]=1; });
+    $("#adRows").textContent=numfmt(dataset.length); $("#adParts").textContent=numfmt(Object.keys(parts).length); $("#adPlants").textContent=Object.keys(ps).length;
+    renderPdfList();
+  }
+
+  /* 啟動 */
+  fillPlantSelect(); setEmpty("prompt"); setStats(0,0,0); route();
+})();
+</script>
+</body>
+</html>
