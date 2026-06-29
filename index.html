@@ -120,6 +120,27 @@
   .toast.ok{background:#15803d} .toast.err{background:var(--red)}
   footer{max-width:1180px;margin:10px auto 40px;padding:0 28px;color:var(--caption);font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
   .hidden{display:none!important}
+  .result-toolbar{display:flex;justify-content:flex-end;gap:10px;margin:14px 0 0}
+  .print-head{display:none}
+  @media print{
+    @page{margin:14mm}
+    body{background:#fff;color:#000}
+    .topbar,.nav,.page-title,.page-desc,.filters,.stats,.result-toolbar,footer,#view-admin,.combo-list,.toast,.empty-state,.no-print{display:none!important}
+    .wrap{max-width:none;margin:0;padding:0}
+    .print-head{display:block;margin:0 0 12px}
+    .print-head .ph-title{font-size:16px;font-weight:700;color:#0B1882}
+    .print-head .ph-row{font-size:12px;color:#333;margin-top:3px}
+    .print-head .ph-date{color:#666}
+    .card{box-shadow:none;border:none;margin:0!important}
+    .table-wrap{overflow:visible;border-radius:0}
+    table{font-size:12px;width:100%}
+    thead th{position:static;background:#e8eef6!important;color:#0B1882!important;border-bottom:2px solid #0077C8;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    tbody td{border-bottom:1px solid #ccc}
+    tbody tr{break-inside:avoid}
+    .pn-cell{color:#0B1882!important}
+    .plant-tag{background:transparent!important;color:#000!important;padding:0}
+    .qty-low{color:#c0392b!important}
+  }
   @media(max-width:860px){
     .filters{grid-template-columns:1fr} .grid2{grid-template-columns:1fr} .map-grid{grid-template-columns:1fr}
     .topbar-inner{flex-direction:column;align-items:flex-start} .wave{width:90%;opacity:.5}
@@ -177,6 +198,12 @@
     <div class="stat"><div class="k">總存貨數量</div><div class="v" id="stQty">0</div></div>
     <div class="stat"><div class="k">涵蓋廠區</div><div class="v" id="stPlants">0</div></div>
   </div>
+
+  <div class="result-toolbar no-print">
+    <button class="btn btn-ghost" id="exportResultBtn">⬇️ 匯出結果 CSV</button>
+    <button class="btn btn-ghost" id="printResultBtn">🖨️ 列印</button>
+  </div>
+  <div class="print-head" id="printHead"></div>
 
   <div class="card" style="margin-top:8px">
     <div class="table-wrap">
@@ -369,6 +396,7 @@
   /* ===== 前台查詢 ===== */
   var searchInput=$("#searchInput"), plantSelect=$("#plantSelect"), comboList=$("#comboList"), emptyEl=$("#emptyResult");
   var comboActive=-1;
+  var lastResults=[], lastQ="", lastP="";
 
   function plants(){ var s={}; dataset.forEach(function(d){if(d.plant)s[d.plant]=1;}); return Object.keys(s); }
   function fillPlantSelect(){
@@ -398,6 +426,7 @@
 
   function renderTable(){
     var rows=matchRows(), body=$("#resultBody");
+    lastResults=rows; lastQ=searchInput.value.trim(); lastP=plantSelect.value;
     if(rows.length===0){ body.innerHTML=""; setEmpty("none"); setStats(0,0,0); return; }
     emptyEl.classList.add("hidden");
     body.innerHTML=rows.map(function(d){
@@ -461,6 +490,28 @@
   $("#resetBtn").addEventListener("click", function(){
     searchInput.value=""; plantSelect.value=""; closeCombo();
     $("#resultBody").innerHTML=""; setStats(0,0,0); setEmpty("prompt");
+    lastResults=[]; lastQ=""; lastP="";
+  });
+
+  /* 匯出查詢結果 CSV / 列印（以實際搜尋出的結果為準） */
+  function pad2(n){ return (n<10?"0":"")+n; }
+  function stamp(){ var d=new Date(); return d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate())+"_"+pad2(d.getHours())+pad2(d.getMinutes()); }
+  function resultSummary(rows){ var qty=0,ps={}; rows.forEach(function(d){ qty+=(+d.qty||0); if(d.plant)ps[d.plant]=1; }); return {qty:qty,plants:Object.keys(ps).length}; }
+  $("#exportResultBtn").addEventListener("click", function(){
+    if(!lastResults.length){ toast("請先按「搜尋」產生結果再匯出","err"); return; }
+    download("bizlink_inventory_query_"+stamp()+".csv", toCsv(lastResults));
+    toast("已匯出 "+lastResults.length+" 列查詢結果","ok");
+  });
+  $("#printResultBtn").addEventListener("click", function(){
+    if(!lastResults.length){ toast("請先按「搜尋」產生結果再列印","err"); return; }
+    var s=resultSummary(lastResults), d=new Date();
+    var when=d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+" "+pad2(d.getHours())+":"+pad2(d.getMinutes());
+    $("#printHead").innerHTML=
+      '<div class="ph-title">BizLink 報價中心 · 物料庫存查詢</div>'+
+      '<div class="ph-row">查詢條件：'+(lastQ?'關鍵字「'+esc(lastQ)+'」':'全部品項')+' ｜ 廠區：'+(lastP?esc(lastP):'全部廠區')+'</div>'+
+      '<div class="ph-row">符合品項 '+numfmt(lastResults.length)+' 項　·　總存貨數量 '+numfmt(s.qty)+'　·　涵蓋廠區 '+s.plants+'</div>'+
+      '<div class="ph-row ph-date">列印時間：'+when+'</div>';
+    window.print();
   });
 
   /* ===== 後台 /admin ===== */
